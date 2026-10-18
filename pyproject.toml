@@ -1,0 +1,26 @@
+[project]
+name = "meshkit"
+version = "0.1.0"
+description = "Code-first polygon mesh kernel for AI agents: build, verify, unwrap and texture meshes as pure data, then export to a DCC."
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+sdf = ["scikit-image>=0.20"]  # to_mesh (marching cubes; brings scipy)
+uv = ["xatlas>=0.0.9"]  # unwrap() (charting + packing for SDF / scanned meshes)
+test = ["pytest>=7"]
+dev = ["pytest>=7", "scikit-image>=0.20", "xatlas>=0.0.9"]  # everything the test suite needs
+
+[project.scripts]
+meshkit = "meshkit.runner:main"
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["meshkit"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
