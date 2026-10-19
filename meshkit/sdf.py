@@ -34,10 +34,11 @@ class SDF:
     .lip bounds |gradient| near the surface (1 = exact distance), .lbf says values are >= lbf x the distance to
     the bounds box (lets unions skip far parts), and .kind/.kids/.name/.k record the build tree."""
 
-    def __init__(self, fn, lo, hi, lip=1.0, kind="sdf", kids=(), name=None, lbf=1.0, k=None):
+    def __init__(self, fn, lo, hi, lip=1.0, kind="sdf", kids=(), name=None, lbf=1.0, k=None, params=None):
         self.fn, self.lo, self.hi = fn, vec(lo), vec(hi)
         self.lip, self.lbf = float(lip), float(lbf)
         self.kind, self.kids, self.name, self.k = kind, tuple(kids), name, k
+        self.params = params  # primitives: their defining numbers (cage_from_sdf builds topology from them)
 
     def __call__(self, P):
         P = np.asarray(P, dtype=float)
@@ -101,7 +102,8 @@ def _local(P, c, R):
 # ---- primitives -----------------------------------------------------------------
 def sphere(radius=1.0, center=0, name=None):
     c = vec(center)
-    return SDF(lambda P: _norm(P - c) - radius, c - radius, c + radius, kind="sphere", name=name)
+    return SDF(lambda P: _norm(P - c) - radius, c - radius, c + radius, kind="sphere", name=name,
+               params=dict(center=c, radius=float(radius)))
 
 
 def ellipsoid(radii=(1, 1, 1), center=0, rotation=None, name=None):
@@ -116,7 +118,8 @@ def ellipsoid(radii=(1, 1, 1), center=0, rotation=None, name=None):
         return np.where(k1 > 1e-12, k0 * (k0 - 1) / np.maximum(k1, 1e-12), -r.min())
     ext = r if R is None else np.sqrt(((R * r) ** 2).sum(1))
     ratio = r.max() / r.min()  # the approximation's gradient and underestimate grow with elongation (measured)
-    return SDF(f, c - ext, c + ext, lip=1 + 0.35 * (ratio - 1), lbf=1 / ratio, kind="ellipsoid", name=name)
+    return SDF(f, c - ext, c + ext, lip=1 + 0.35 * (ratio - 1), lbf=1 / ratio, kind="ellipsoid", name=name,
+               params=dict(center=c, radii=r, rotation=np.eye(3) if R is None else R))
 
 
 def _round_cones(P, A, B, R1, R2):
@@ -160,7 +163,8 @@ def capsule(a, b, radius=0.25, radius_b=None, rotation=None, name=None):
     rb = ra if radius_b is None else float(radius_b)
     A, B, R1, R2 = a[None], b[None], np.array([ra]), np.array([rb])
     return SDF(lambda P: _round_cones(P, A, B, R1, R2)[:, 0], np.minimum(a - ra, b - rb),
-               np.maximum(a + ra, b + rb), kind="capsule", name=name)
+               np.maximum(a + ra, b + rb), kind="capsule", name=name, params=dict(points=np.array([a, b]),
+                                                                                  radii=np.array([ra, rb])))
 
 
 def box(size=1.0, center=0, round=0.0, rotation=None, name=None):
@@ -171,7 +175,8 @@ def box(size=1.0, center=0, round=0.0, rotation=None, name=None):
         q = np.abs(_local(P, c, R)) - (half - round)
         return _norm(np.maximum(q, 0)) + np.minimum(q.max(axis=1), 0) - round
     ext = half if R is None else np.abs(R) @ half
-    return SDF(f, c - ext, c + ext, kind="box", name=name)
+    return SDF(f, c - ext, c + ext, kind="box", name=name,
+               params=dict(center=c, size=2 * half, rotation=np.eye(3) if R is None else R, round=float(round)))
 
 
 def cone(a, b, radius_a=0.5, radius_b=0.0, rotation=None, name=None):
@@ -196,7 +201,8 @@ def cone(a, b, radius_a=0.5, radius_b=0.0, rotation=None, name=None):
         s = np.where((cbx < 0) & (cay < 0), -1.0, 1.0)
         return s * np.sqrt(np.minimum(cax * cax + cay * cay * baba, cbx * cbx + cby * cby * baba))
     R = max(ra, rb)
-    return SDF(f, np.minimum(a, b) - R, np.maximum(a, b) + R, kind="cone", name=name)
+    return SDF(f, np.minimum(a, b) - R, np.maximum(a, b) + R, kind="cone", name=name,
+               params=dict(points=np.array([a, b]), radii=np.array([ra, rb])))
 
 
 def _cr_scalar(v, u):
@@ -227,7 +233,7 @@ def sweep_sdf(points, radii=0.1, resolution=8, name=None):
     rs = np.clip(_cr_scalar(r, u), r.min(), r.max())
     A, B, R1, R2 = C[:-1], C[1:], rs[:-1], rs[1:]
     return SDF(lambda Q: _chain(Q, A, B, R1, R2), (C - rs[:, None]).min(0), (C + rs[:, None]).max(0),
-               kind="sweep", name=name)
+               kind="sweep", name=name, params=dict(points=P, radii=r, curve=C, curve_radii=rs, u=u))
 
 
 def limb_sdf(points, radii=0.1, knuckle=1.1, k=None, name=None):
@@ -256,7 +262,8 @@ def limb_sdf(points, radii=0.1, knuckle=1.1, k=None, name=None):
         return d
     rr = np.maximum(r, np.r_[0, RJ, 0]) if bulge else r
     pad = max(k, 0) / 4  # the smooth min lowers values by at most k/4
-    return SDF(f, (P - rr[:, None]).min(0) - pad, (P + rr[:, None]).max(0) + pad, kind="limb", name=name)
+    return SDF(f, (P - rr[:, None]).min(0) - pad, (P + rr[:, None]).max(0) + pad, kind="limb", name=name,
+               params=dict(points=P, radii=r, knuckle=float(knuckle) if bulge else 1.0))
 
 
 def _transformed(s, R, pivot, offset, scale, name=None, kind="transform", kids=None):
@@ -270,7 +277,7 @@ def _transformed(s, R, pivot, offset, scale, name=None, kind="transform", kids=N
     W = (C - pivot) * scale @ Rt.T + pivot + offset
     out = SDF(f, W.min(0), W.max(0), lip=s.lip, lbf=s.lbf, kind=kind, kids=(s,) if kids is None else kids,
               name=name, k=s.k)
-    out.xf = (R, pivot, offset, scale)
+    out.xf, out.src = (R, pivot, offset, scale), s
     return out
 
 
@@ -427,7 +434,7 @@ def project_to_sdf(sdf, points, iters=16, tol=None):
         if not len(act):
             break
         g = _grad(sdf, P[act])
-        P[act] -= (d[act] / np.maximum((g * g).sum(1), 1e-12))[:, None] * g
+        P[act] -= (d[act] / np.maximum((g * g).sum(1), 0.25))[:, None] * g  # no leaps where the gradient fades
         d[act] = sdf.fn(P[act])
     return Projected(P, sdf.normal(P), d0, np.abs(d))
 

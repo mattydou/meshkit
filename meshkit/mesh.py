@@ -108,7 +108,7 @@ class Created:
 
     def __repr__(self):
         def brief(v):
-            return len(v) if hasattr(v, "__len__") else v
+            return len(v) if hasattr(v, "__len__") and not isinstance(v, str) else v
         parts = [f"{k}={brief(v)}" for k, v in self.__dict__.items()
                  if not (k in ("verts", "faces", "edges") and not v)]
         return "Created(" + ", ".join(parts) + ")"

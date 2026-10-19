@@ -1,11 +1,12 @@
 # meshkit cheatsheet
 `from meshkit import *` · Z up · CCW winding = front · run: `python -m meshkit run model.py|.obj|.json|.glb [--final] [--render [FOCUS]] [--zoom X] [--out DIR] [--no-export]`
 Script: `mesh = ...` or `def build()`; `check_opts = {"closed": True, "expect_genus": 0, "uvs": True}`; `sdf = shape` adds proximity (`proximity_opts`);
-`texture = layers(...)` adds UV checks, bakes maps (`bake_opts`) and exports them (GLB / OBJ+MTL / Blender script). Exit 0 ok / 1 fail / 2 error.
+`texture = layers(...)` adds UV checks, bakes maps (`bake_opts`) and exports them (GLB / OBJ+MTL / Blender script); quad meshes get `topo_report`. Exit 0 ok / 1 fail / 2 error.
 **Primitives/SDF meshing return a Mesh. Every op returns `(mesh, created)`; meshes are immutable.** `created`: `.verts .faces .edges` (Sel) + extras.
 **sel** = None (all) · group name(s) · Sel · int · list of ints (op's own kind) · list of (a,b) edges. Sels convert (faces→verts; verts→faces inside).
 New faces/verts inherit their source's groups and UVs. Tolerances are fractions of `mesh.diag`. Axes `'x' '-z'`, 3-vectors or scalars.
-**Tip: iterate in draft, export in final** (`to_mesh` draft 64 cells / `--final` 180; bakes 512 / 1024). Render only at milestones.
+**Tip: iterate in draft, export in final** (`to_mesh` draft 64 cells / `--final` 180; cages 50 / 100 edges; bakes 512 / 1024). Render only at milestones.
+**Tip: SDF finds the form, cage_from_sdf + retopo_project makes the final topology.**
 **Tip: build masks from anatomy (normals, curvature, groups), not from UV coordinates.**
 
 ## Core
@@ -37,6 +38,16 @@ to_mesh makes one face group per named part (each face → nearest part); `spars
 `sweep_sdf(points, radii, resolution=8)` curved tube · `limb_sdf(points, radii, knuckle=1.1, k=None)` straight segments + knuckle bulges · `sdf_transform(s, rotation, offset, pivot=None, scale=1)`
 `union(*s)` · `smooth_union(*s, k=.1)` k per part ok · `subtract(a, b, k=0)` · `intersect(a, b)` · `displace_sdf(s, field)` · `SDF` `.eval(P)` `.normal(P)` · `project_to_sdf(s, P)` → points, normals
 `proximity(s, threshold=None, allow=[(a, b)])` parts closer than max(k/2, final voxel) in empty space would fuse
+
+## Retopology (all-quad topology from SDF parts)
+`cage_from_sdf(sdf, density=None, root=None, support=.5, margin=None, keep='largest', group=None)` → Mesh, one group per part: root sphere / ellipsoid /
+  box → quad lattice; capsule / cone / sweep_sdf / limb_sdf → tubes along their paths, other spheres / ellipsoids lathed out of their parent, through
+  square holes; quad caps; density = edges per unit (`CAGE_PRESETS` along the longest side); support loops and mitered rings at joints
+`retopo_project(cage, sdf, iterations=3, relax=.5, steps=4, untangle=8)` project + tangential Taubin; groups, UVs kept → `.max_dist` `.flipped`
+`attach_sweep(m, points, radius, sel=None, edge=None, end='round'|'flat'|'open', path='smooth'|'joints')` grow a quad tube out of a hole → `.hole .rings .end`
+`topo_report(m, sdf=None)` quad ratio, valence, poles (flagged at joints), edge cv per group, loops per joint (3+ to bend), with sdf: distance, folds
+Fallbacks for shapes it can't map: `isotropic_remesh(m, edge_length)` even triangles (pure Python) · `quad_remesh(m, target_faces)` via QuadriFlow /
+  Instant Meshes / Blender's QuadriFlow (headless); both re-derive topology: groups by nearest face, UVs dropped (unwrap after)
 
 ## UVs
 `unwrap(m, method='xatlas'|'box', margin=.01, max_stretch=2)` (xatlas = `[uv]` extra) · `pack(m, margin=.01, rotate=True)` re-pack islands at one texel density

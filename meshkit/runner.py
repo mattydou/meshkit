@@ -2,7 +2,8 @@
 
 A model script defines `mesh` (a Mesh) or `build() -> Mesh`, optionally `check_opts = {"closed": True}`, and may
 register plugin checks/scorers. Setting `sdf = <the SDF>` adds the parts-proximity report (`proximity_opts` are
-passed on). Setting `texture = layers(...)` adds UV checks, bakes the maps (size follows draft / final; `bake_opts`
+passed on). Quad-dominant meshes (cage_from_sdf + retopo_project, quad_remesh) also get topo_report (with the
+script's sdf for limb and sweep joints). Setting `texture = layers(...)` adds UV checks, bakes the maps (size follows draft / final; `bake_opts`
 are passed on) and exports them with the mesh (GLB material, OBJ + MTL, Blender script). The runner prints build time (with to_mesh's share), check, describe and plugin results tersely, writes
 exports to <script dir>/out/, and exits 0 (all OK), 1 (failures) or 2 (script error). `--final` meshes SDFs at the
 final preset instead of draft; `--render [FOCUS]` writes a PNG contact sheet after the run. A .obj or .json path is
@@ -22,6 +23,7 @@ from .texture import BAKE_PRESETS, Texture, bake
 from .mesh import Mesh
 from .render import render_views
 from .report import check, clear_plugins, describe, fmt, fvec, run_plugins, _checks, _scorers
+from .retopo import topo_report
 
 
 def short_traceback(exc, script):
@@ -113,6 +115,8 @@ def run(script, out_dir=None, export=True, out=sys.stdout, res=None, render=None
     if opts.get("expect_genus") is not None and (c.stats["genus"] or 0) > opts["expect_genus"]:
         say(str(find_handles(mesh)))  # where the extra handles are
     say(str(describe(mesh)))
+    if len(mesh.faces) and sum(len(f) == 4 for f in mesh.faces) >= 0.5 * len(mesh.faces):
+        say(str(topo_report(mesh, ns.get("sdf") if isinstance(ns.get("sdf"), _sdf.SDF) else None)))
     ok = c.ok
     if isinstance(ns.get("sdf"), _sdf.SDF):
         p = _sdf.proximity(ns["sdf"], **ns.get("proximity_opts", {}))

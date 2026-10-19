@@ -1,7 +1,8 @@
 """meshkit: a code-first polygon mesh kernel for AI agents (pure Python + numpy).
 
-Build meshes as data, verify them with check()/describe(), unwrap and texture them procedurally, iterate, then export
-to Blender or any DCC (GLB, OBJ + MTL, JSON + import script).
+Build meshes as data (or SDF forms, retopologized into clean quads), verify them with check()/describe()/topo_report(),
+unwrap and texture them procedurally, iterate, then export to Blender or any DCC (GLB, OBJ + MTL, JSON + import
+script).
 Primitives return a Mesh; every op returns (new_mesh, created). See CHEATSHEET.md."""
 import sys as _sys
 
@@ -18,6 +19,8 @@ from .sdf import (SDF, PRESETS, sphere, ellipsoid, capsule, box, cone, sweep_sdf
                   smooth_union, subtract, intersect, displace_sdf, project_to_sdf, proximity, to_mesh)
 from .handles import find_handles
 from .decimate import decimate
+from .retopo import CAGE_PRESETS, cage_from_sdf, retopo_project, attach_sweep, topo_report
+from .remesh import isotropic_remesh, quad_remesh
 from .render import render_views
 from .ops import extrude, inset, mirror, merge_by_distance, bridge, flip, recalc_normals, subdivide
 from .uv import uv_islands, uv_seams, project_uvs, pack, unwrap, export_uv_sheet

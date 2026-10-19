@@ -8,7 +8,7 @@ import pytest
 from meshkit.runner import run
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-EXAMPLES = ["table", "limb", "building", "sdf_creature", "textured_creature"]
+EXAMPLES = ["table", "limb", "building", "sdf_creature", "textured_creature", "retopo_creature"]
 
 
 def needs(name):
@@ -27,7 +27,7 @@ def test_example_passes_runner(name, tmp_path):
     assert os.path.exists(tmp_path / f"{name}.json")
 
 
-@pytest.mark.parametrize("name", ["building", "sdf_creature", "textured_creature"])
+@pytest.mark.parametrize("name", ["building", "sdf_creature", "textured_creature", "retopo_creature"])
 def test_deterministic_across_processes(name, tmp_path):
     needs(name)
     outs = []
@@ -54,3 +54,16 @@ def test_textured_example_meets_the_brief(tmp_path):
     assert maps["albedo"].shape == (1024, 1024, 3) and maps["normal"].shape == (1024, 1024, 3)
     text = out.getvalue()
     assert "uv: islands=" in text and "bake: 1024px" in text and "check: OK" in text
+
+
+def test_retopo_example_meets_the_brief(tmp_path):
+    """An existing SDF creature (the lizard) retopologized: all quads, closed, genus 0, < 15k triangles in final."""
+    from meshkit import check, load_glb
+    out = io.StringIO()
+    assert run(os.path.join(ROOT, "examples", "retopo_creature.py"), out_dir=str(tmp_path), out=out, res="final") == 0
+    text = out.getvalue()
+    assert "topo: OK" in text and "quads 100%" in text and "loops per joint" in text
+    m = load_glb(str(tmp_path / "retopo_creature.glb"))
+    assert all(len(f) == 4 for f in m.faces) and len(m.triangles[0]) < 15000
+    assert check(m, closed=True, expect_genus=0).ok
+    assert {"body", "head", "snout", "tail", "eye.0", "spike.0", "leg.3", "toe.0", "skin"} <= set(m.groups)
